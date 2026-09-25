@@ -1,0 +1,39 @@
+# Dataset and heavy intermediates live outside git.
+artifacts/
+data/
+student_resource/
+
+# Source and submission TSVs: the dataset is never committed, but the two files
+# we actually submit are.
+*.tsv
+!output/matching_results.tsv
+!output/candidate_pairs.tsv
+
+# Cached matrices, indexes and model files.
+*.parquet
+*.npy
+*.npz
+*.pkl
+*.joblib
+*.feather
+*.bin
+*.zip
+
+# Planning notes, kept local.
+PHASES.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
