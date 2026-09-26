@@ -3,11 +3,10 @@ artifacts/
 data/
 student_resource/
 
-# Source and submission TSVs: the dataset is never committed, but the two files
-# we actually submit are.
+# No TSV is committed. The dataset lives outside the repo, and the two output
+# files are rebuilt by the pipeline and shipped in the submission zip -- at
+# ~24 MB each they do not belong in git history.
 *.tsv
-!output/matching_results.tsv
-!output/candidate_pairs.tsv
 
 # Cached matrices, indexes and model files.
 *.parquet
