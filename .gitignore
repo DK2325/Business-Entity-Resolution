@@ -1,0 +1,38 @@
+# Dataset and heavy intermediates live outside git.
+artifacts/
+data/
+student_resource/
+
+# No TSV is committed. The dataset lives outside the repo, and the two output
+# files are rebuilt by the pipeline and shipped in the submission zip -- at
+# ~24 MB each they do not belong in git history.
+*.tsv
+
+# Cached matrices, indexes and model files.
+*.parquet
+*.npy
+*.npz
+*.pkl
+*.joblib
+*.feather
+*.bin
+*.zip
+
+# Planning notes, kept local.
+PHASES.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
