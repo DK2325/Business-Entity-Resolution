@@ -298,7 +298,7 @@ def section_dupes(n_groups: int = 20000) -> dict:
     If an S2 record and an S3 record describing the same business are usually
     near-identical, then a match found on one side can be propagated to the
     other, which is a cheap recall gain for records the blocker would otherwise
-    miss (for instance those with an empty address).
+    miss (for example those with an empty address).
     """
     rng = random.Random(SEED)
     groups, records = _sample_groups(n_groups, rng)

@@ -102,7 +102,8 @@ def _write_shard(path, record_ids, dec_record, dec_entity, dec_prob, dec_margin,
     tmp.replace(path)
 
 
-def _init_worker(split: str, country: str, k: int, max_df_ratio: float, model_path: str) -> None:
+def _init_worker(split: str, country: str, k: int, max_df_ratio: float, model_path: str,
+                 score_floor: float = 0.0) -> None:
     """Build this worker's index and load the model once."""
     import lightgbm as lgb
 
@@ -120,6 +121,7 @@ def _init_worker(split: str, country: str, k: int, max_df_ratio: float, model_pa
     _STATE["k"] = k
     _STATE["files"] = files
     _STATE["country"] = country
+    _STATE["score_floor"] = score_floor
 
 
 def _run_shard(task: tuple[int, int, int, float, bool, str]) -> dict:
@@ -214,7 +216,10 @@ def _run_shard(task: tuple[int, int, int, float, bool, str]) -> dict:
 
     for batch in iter_chunks(records(), chunk_rows):
         base = len(record_ids)
-        shortlists = retrieve(index, batch, k=k, chunk_rows=chunk_rows)
+        shortlists = retrieve(
+            index, batch, k=k, chunk_rows=chunk_rows,
+            score_floor=_STATE.get("score_floor", 0.0),
+        )
 
         rows: list[list[float]] = []
         owner_entity: list[int] = []
@@ -403,6 +408,7 @@ def score_country(
     model_path: str,
     want_candidates: bool,
     out_dir: Path,
+    score_floor: float = 0.0,
     limit: int = 0,
     checkpoint_every: int = 0,
     expected_per_worker: int = 0,
@@ -424,7 +430,7 @@ def score_country(
     use_fork = "fork" in mp.get_all_start_methods()
     if use_fork:
         started = time.time()
-        _init_worker(split, country, k, max_df_ratio, model_path)
+        _init_worker(split, country, k, max_df_ratio, model_path, score_floor)
         print(
             f"  index built once in parent, shared by fork "
             f"({_STATE['index'].size:,} entities)  [{time.time() - started:.0f}s]",
@@ -438,7 +444,7 @@ def score_country(
     with context.Pool(
         processes=workers,
         initializer=_init_worker,
-        initargs=(split, country, k, max_df_ratio, model_path),
+        initargs=(split, country, k, max_df_ratio, model_path, score_floor),
     ) as pool:
         return list(pool.imap_unordered(_run_shard, tasks))
 
@@ -455,7 +461,10 @@ def main() -> None:
                         help="number of worker processes, or 'auto' to size from cores/RAM")
     parser.add_argument("--chunk-rows", type=int, default=20000)
     parser.add_argument("--keep-floor", type=float, default=0.02)
-    parser.add_argument("--max-df-ratio", type=float, default=0.002)
+    parser.add_argument("--max-df-ratio", type=float, default=0.002,
+                        help="1.0 disables the document-frequency cap")
+    parser.add_argument("--score-floor", type=float, default=0.0,
+                        help="drop nominations scoring below this (shrinks the candidate set)")
     parser.add_argument("--no-candidates", action="store_true")
     parser.add_argument("--out-dir", default=None)
     parser.add_argument("--checkpoint-every", type=int, default=200_000,
@@ -512,6 +521,7 @@ def main() -> None:
             model_path,
             not args.no_candidates,
             out_dir,
+            args.score_floor,
             args.limit,
             args.checkpoint_every,
             expected_per_worker,

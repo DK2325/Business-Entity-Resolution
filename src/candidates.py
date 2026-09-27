@@ -140,12 +140,20 @@ def retrieve(
     records: list[tuple[str, str, str, bool]],
     k: int,
     chunk_rows: int = 20000,
+    score_floor: float = 0.0,
 ) -> list[Shortlist]:
     """Retrieve the top ``k`` Source 1 entities per view for each record.
 
     ``records`` is ``(record_id, name, address, is_s3)``. Results merge the views:
     a candidate is kept if any view ranked it in its own top ``k``, and carries
     that view's rank and score plus the best across views.
+
+    ``score_floor`` drops nominations whose blocking score falls below it. The
+    organisers rank a smaller candidate set per Source 1 entity higher, and weak
+    nominations are almost never matched, so the floor buys a substantially
+    smaller candidate set for very little recall. It is applied during retrieval
+    rather than afterwards so that the candidates we report are exactly the ones
+    the model scores.
     """
     if not records or not index.matrices:
         return []
@@ -164,7 +172,12 @@ def retrieve(
             n_columns=matrix.shape[1],
         )
         ids, scores = topk_matches(
-            query, matrix, k=k, chunk_rows=chunk_rows, index_transpose=transpose
+            query,
+            matrix,
+            k=k,
+            chunk_rows=chunk_rows,
+            index_transpose=transpose,
+            min_score=score_floor,
         )
         for row in range(len(records)):
             rank_bucket = merged_ranks[row]
