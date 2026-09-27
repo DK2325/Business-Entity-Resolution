@@ -194,11 +194,11 @@ one Source 1 entity** — its argmax — and only if that probability clears the
 Thresholding pairs independently would let one record be handed to several entities, and every
 surplus copy is a false merge charged against a different entity's precision.
 
-The collective stage is then applied **to India only**, at threshold 0.70; **US and France keep
-their stage-1 assignment** at the same threshold.
+The collective stage is then applied **to all three countries** at threshold 0.70, using a model
+trained on India and US decisions together.
 
-This asymmetry is an empirical result, not a design preference. The collective model was
-trained on India decisions. Applied to all three countries it produced, on US, **4,324
+The scope of the collective stage is an empirical result, not a design preference. An earlier
+collective model was trained on India decisions alone. Applied to all three countries it produced, on US, **4,324
 singleton entities turned into matched entities against only 1,435 in the reverse direction —
 a 3:1 skew**, where a singleton wrongly given a match scores a hard 0. The leaderboard
 confirmed the diagnosis: stage-2 everywhere scored **0.914**, identical to stage-1 alone, while
@@ -239,15 +239,28 @@ transliteration, so a US distractor scoring moderately looks acceptable by India
 | 2 | stage-2 applied to all countries | 0.914 |
 | 3 | **stage-2 India only, stage-1 elsewhere** | **0.916** |
 | 4 | stage-1, `max_df 0.02` + floor 0.2469, retrained matcher | TBD |
-| 5 | as #4 plus collective stage on India (threshold 0.70) | TBD |
+| **5** | **as #4 plus collective stage on all three countries, model trained on India + US** | **0.922** |
 
-Note that the holdout predicted +0.010 from the collective stage while the leaderboard moved
-+0.002 — the offline estimate overstated the gain by roughly 5x on the full test set, and by
-about 2x once restricted to India. Later changes were therefore accepted only with a clear
-margin on both holdout halves **and** checked per country rather than in aggregate.
+The submitted configuration (#5) scored **0.922**, the best of the five, and the progression is
+worth reading as a sequence rather than a set of independent attempts:
+
+* #1 to #4 isolates the blocking change alone: **+0.001**.
+* #1 to #3 isolates the collective stage on the one country it was trained for: **+0.002**.
+* #2 shows what happens when the same stage is applied to countries it was not trained on:
+  **no gain at all**, the India improvement cancelled by the US damage.
+* #5 combines the better blocking with a collective model trained on both labelled countries:
+  **+0.008 over #1**, more than the two isolated gains add up to, because the stage now helps
+  every country instead of one.
+
+Calibration between the holdout and the leaderboard was consistently poor. The collective stage
+predicted +0.010 offline and moved the leaderboard +0.002 when restricted to India — an
+overstatement of roughly 5x on the full test set, about 2x once restricted to the country it
+was measured on. Every later change was therefore accepted only with a clear margin on **both**
+holdout halves, checked **per country** rather than in aggregate, and discounted heavily before
+being believed.
 
 **Final configuration:** `k = 5` per view, `max_df_ratio = 0.02`, blocking-score floor
-`0.2469`, stage-1 threshold **0.70**, collective-stage threshold **0.70** applied to India only.
+`0.2469`, stage-1 threshold **0.70**, collective-stage threshold **0.70** applied to all three countries.
 
 **Loss decomposition** on the India holdout (549,932 true links), each bucket priced by an
 oracle that fixes only that failure mode:
@@ -279,13 +292,18 @@ demonstration of how heavily this metric punishes false merges.
 
 ## 6. Conclusion
 
-Most of the score came from reading the data rather than from model capacity: exclusivity set
-the architecture, the numeric-conflict signal set the precision, and a document-frequency cap
-originally chosen to bound memory turned out to be the largest single drag on recall — worth
-+2.3 points on India once measured and corrected. The most useful discipline was distrusting
-our own offline numbers: the holdout overstated leaderboard gains several-fold, and the one
-change that looked best offline (collective scoring everywhere) was neutral on the leaderboard
-until we restricted it to the country it was trained on.
+Most of the score came from reading the data rather than from model capacity. Exclusivity set
+the architecture; the numeric-conflict signal set the precision; and a document-frequency cap
+originally chosen to bound memory turned out to be the largest single drag on recall, worth
++2.3 points of blocking recall on India once measured and corrected.
+
+The most useful discipline was distrusting our own offline numbers. The holdout overstated
+leaderboard gains several-fold throughout, and the change that looked best offline — applying
+collective scoring everywhere — was worth nothing on the leaderboard until we understood *why*
+it failed on the countries it had not been trained on, and retrained it on those countries
+rather than simply switching it off there. That single diagnosis, from a 3:1 skew in how US
+singletons were being converted to matches, is the difference between our first submission at
+0.914 and our last at 0.922.
 
 ---
 
@@ -353,3 +371,28 @@ provided files. The only third-party resources are open-source Python libraries 
 **Note:** Section numbering and headings follow the provided template; subsections 4.1, 4.2 and
 the appendix items were added to document the second stage, the final decision rule and the
 runtime environment.
+
+
+### C. Collective stage: country scope
+
+The collective model's scope was decided by measurement, in two stages.
+
+An early model trained on **India decisions only** gained on India but damaged US: applied
+there it turned 4,324 singleton entities into matched ones against only 1,435 in the reverse
+direction, a 3:1 skew on entities where any match scores 0. The leaderboard confirmed it —
+0.914 applied everywhere against 0.916 restricted to India.
+
+Retraining on **India and US decisions together** removed the failure. Per-country evaluation,
+each on both halves of the holdout split:
+
+| Country | stage 1 (A / B) | + collective stage (A / B) | gain |
+| --- | ---: | ---: | ---: |
+| India | 0.9172 / 0.9185 | **0.9298 / 0.9300** | +0.0127 / +0.0115 |
+| US | 0.9491 / 0.9492 | **0.9569 / 0.9568** | +0.0079 / +0.0076 |
+
+France cannot be evaluated this way — it has no labels — so it was checked by how far its
+prediction rates moved relative to a country that *was* in training. Against the stage-1
+submission, France's matched rate moved 0.32pt and its mean matches per entity 0.02, against
+the US's 0.13pt and 0.11. France moves no more than the trained countries do, which is what
+the model generalising rather than extrapolating looks like, so the stage was applied there
+too.
