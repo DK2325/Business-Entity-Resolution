@@ -1,0 +1,2 @@
+submission,timestamp_utc,commit,description,blocking,threshold,margin,holdout_f0.5_india,leaderboard_score,notes
+1,2026-09-26T21:16Z,a6f0766,baseline thr 0.70,composite+ngram k=5,0.70,0.0,0.9040,0.914,"93466649 candidate pairs; validator PASS; predicted-singleton 7.10% vs train 5.58%"

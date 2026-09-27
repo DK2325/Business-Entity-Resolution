@@ -18,8 +18,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ``student_resource`` as shipped by the organisers, kept outside the repo so the
 # 2.4 GB of TSVs are never synced or committed.
+#
+# The default is relative to the repository so the code runs unchanged on any
+# machine; set ``BER_DATA_ROOT`` to point at a copy held elsewhere.
 DATA_ROOT = Path(
-    os.environ.get("BER_DATA_ROOT", r"C:/Users/sumit/ml_challenge_data/student_resource")
+    os.environ.get("BER_DATA_ROOT", str(Path(__file__).resolve().parent.parent / "data" / "student_resource"))
 )
 
 DATASET_DIR = DATA_ROOT / "dataset"
@@ -29,7 +32,9 @@ VALIDATOR = DATA_ROOT / "utils" / "validate_submission.py"
 
 # Heavy intermediates (blocking indexes, feature matrices, model files). Ignored
 # by git; kept off the OneDrive-synced repo path by default.
-ARTIFACTS = Path(os.environ.get("BER_ARTIFACTS", r"C:/Users/sumit/ml_challenge_data/work"))
+ARTIFACTS = Path(
+    os.environ.get("BER_ARTIFACTS", str(Path(__file__).resolve().parent.parent / "work"))
+)
 
 OUTPUT_DIR = REPO_ROOT / "output"
 
