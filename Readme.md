@@ -109,11 +109,18 @@ python scripts/predict_parallel.py --split test --countries France US India \
 python scripts/write_submission.py --shards "$BER_ARTIFACTS/shards_test" \
     --threshold 0.70 --margin 0.0
 
-# 8. apply the second stage where it was validated to help, rewriting
-#    matching_results.tsv only (candidate_pairs.tsv is unchanged, so the
-#    matches remain a subset of the candidates)
+# 8. apply the collective stage where it was validated to help. Only
+#    matching_results.tsv is rewritten; candidate_pairs.tsv from step 7 still
+#    describes exactly the set the model scored, so matches stay a subset of it.
+#
+#    The collective stage is applied to India only. It is trained on India
+#    decisions, and applied to US it turned singleton entities into matched ones
+#    at a 3:1 ratio against the reverse, which this metric punishes hard; the
+#    leaderboard agreed (0.914 applied everywhere against 0.916 on India only).
 python scripts/apply_collective.py --shards "$BER_ARTIFACTS/shards_test" \
-    --model "$BER_ARTIFACTS/collective.txt" --threshold 0.60 --floor 0.30
+    --model "$BER_ARTIFACTS/collective.txt" \
+    --threshold 0.70 --floor 0.30 \
+    --stage2-countries India --stage1-threshold 0.70
 
 # 9. validate before submitting
 python "$BER_DATA_ROOT/utils/validate_submission.py" \
@@ -121,6 +128,27 @@ python "$BER_DATA_ROOT/utils/validate_submission.py" \
     --candidate output/candidate_pairs.tsv \
     --test-dir "$BER_DATA_ROOT/dataset/test"
 ```
+
+### Variant: collective stage on all three countries
+
+If a collective model is trained on **both** India and US decisions
+(`scripts/train_collective_multi.py`), and per-country evaluation on both halves
+of the holdout shows it beats stage 1 in **every** country, step 8 becomes:
+
+```bash
+# 5b. multi-country collective model (replaces step 5)
+python scripts/train_collective_multi.py --countries India US \
+    --shards "$BER_ARTIFACTS/shards_train" --floor 0.30 \
+    --out "$BER_ARTIFACTS/collective_multi.txt"
+
+# 8b. apply it everywhere (replaces step 8)
+python scripts/apply_collective.py --shards "$BER_ARTIFACTS/shards_test" \
+    --model "$BER_ARTIFACTS/collective_multi.txt" \
+    --threshold 0.70 --floor 0.30
+```
+
+Which of the two was used for the submitted file is recorded in
+`submissions_log.csv` alongside its leaderboard score.
 
 Steps 4, 6 and 8 are the long ones. Every scoring run checkpoints each worker,
 so re-running the same command after an interruption resumes from the last

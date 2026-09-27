@@ -94,26 +94,38 @@ it reaches the size of the index, making the intermediate product infeasible at 
 20x lower.** Measured at **full scale** on sampled records, moving from 0.002 to 0.02 raised
 blocking recall from 0.9108 to **0.9334** (India) and 0.9556 to **0.9688** (US).
 
-- **Candidate pairs generated:** at `k = 5` with `max_df 0.002` and no floor, the test set
-  produced **93,466,649** candidate pairs across 1,732,544 Source 1 entities — about **54 per
-  entity**. Because retrieval runs from the Source 2/3 side, nominations accumulate unevenly on
-  Source 1 entities, so candidates per entity is considerably larger than `k` and has to be
-  managed explicitly. The score floor is the control. Measured on the 200k-entity tuning
-  **harness** (figures below are harness measurements; the per-entity counts are scaled to
-  production by the ratio of queries to entities):
+- **Candidate pairs generated:** because retrieval runs from the Source 2/3 side, nominations
+  accumulate unevenly on Source 1 entities, so candidates per entity is considerably larger
+  than `k` and has to be managed explicitly. Two sets of figures follow and they are **not**
+  interchangeable: the tuning harness used a 200,000-entity index and a reduced query load, so
+  its per-entity counts are indicative only. The full-scale numbers are what the submitted
+  `candidate_pairs.tsv` actually contains.
 
-| Configuration | Link recall (harness) | Candidates per entity (scaled) |
+  **Full scale (the submitted test set: 1,732,544 Source 1 entities, 9,969,589 Source 2/3
+  records):**
+
+| Configuration | Candidate pairs | Candidates per Source 1 entity | File size |
+| --- | ---: | ---: | ---: |
+| k=5, cap 0.002, no floor (submissions 1-3) | 93,466,649 | **~54.0** | 1.23 GB |
+| **k=5, cap 0.02, floor 0.2469 (submitted)** | **84,019,163** | **~48.5** | **1.11 GB** |
+
+  **Tuning harness (200,000-entity index; relative comparison only):**
+
+| Configuration | Link recall (harness) | Candidates per entity (harness, scaled) |
 | --- | ---: | ---: |
 | k=5, cap 0.002, no floor | 0.9474 | ~54 |
 | k=5, cap 0.02, no floor | 0.9650 | ~47 |
 | **k=5, cap 0.02, floor 0.2469 (selected)** | **0.9620** | **~35** |
 | k=3, cap 0.02, floor 0.2469 | 0.9522 | ~21 |
 
-  The selected configuration improves on both axes relative to the earlier one: higher recall
-  with roughly **35% fewer candidates per Source 1 entity**. A per-entity cap was evaluated and
-  rejected: capping at 20 saved a further 11% of candidates for 0.3pt of recall, and it cannot
-  be applied consistently in a sharded run — a global per-entity cap requires knowledge no
-  single worker holds, so it would have to be applied after scoring, leaving
+  The selected configuration improves on both axes relative to the earlier one: **higher
+  blocking recall with about 10% fewer candidate pairs** (93.5M to 84.0M, or ~54 to ~48.5 per
+  entity) at full scale. The harness suggested a larger reduction (~35 per entity) because its
+  smaller index changes both the score distribution the floor acts on and the ratio of queries
+  to entities; we report the full-scale figure as the honest one. A per-entity cap was
+  evaluated and rejected: capping at 20 saved a further 11% of candidates for 0.3pt of recall,
+  and it cannot be applied consistently in a sharded run — a global per-entity cap requires
+  knowledge no single worker holds, so it would have to be applied after scoring, leaving
   `candidate_pairs.tsv` inconsistent with the set the model actually scored.
 
 - **How we ensured true matches were not lost:** a union of two independent views (they overlap
@@ -182,8 +194,8 @@ one Source 1 entity** — its argmax — and only if that probability clears the
 Thresholding pairs independently would let one record be handed to several entities, and every
 surplus copy is a false merge charged against a different entity's precision.
 
-The collective stage is then applied **to India only**, at threshold 0.60; **US and France keep
-their stage-1 assignment** at threshold 0.70.
+The collective stage is then applied **to India only**, at threshold 0.70; **US and France keep
+their stage-1 assignment** at the same threshold.
 
 This asymmetry is an empirical result, not a design preference. The collective model was
 trained on India decisions. Applied to all three countries it produced, on US, **4,324
@@ -199,9 +211,25 @@ transliteration, so a US distractor scoring moderately looks acceptable by India
 
 ## 5. Results & Error Analysis
 
-- **F_0.5 Score (macro):** on the India holdout, stage 1 alone scores **0.9035**. Adding the
-  collective stage raises it to **0.9134** on half A and **0.9137** on half B (+0.0100 /
-  +0.0102), improving both halves of the split.
+- **F_0.5 Score (macro):** measured on the India holdout (158,974 entities the model never
+  trained on).
+
+| Configuration | macro F_0.5 |
+| --- | ---: |
+| stage 1, earlier blocking (`max_df 0.002`, no floor), threshold 0.70 | 0.9035 |
+| stage 1 + collective stage, earlier blocking | 0.9134 (half A) / 0.9137 (half B) |
+| **stage 1, final blocking (`max_df 0.02`, floor 0.2469), threshold 0.70** | **0.9081** |
+| stage 1, final blocking, threshold 0.65 (holdout optimum) | 0.9083 |
+| **stage 1 + collective stage, final blocking, threshold 0.70** | **0.9195 (A) / 0.9203 (B)** |
+
+  On the final blocking the collective stage is worth **+0.0124 (half A) / +0.0119 (half B)**
+  over stage 1 — a larger and equally consistent gain than on the earlier blocking, and it
+  improves the singleton component most (0.8584 to 0.9270 at threshold 0.70).
+
+  The threshold curve is flat between 0.60 and 0.70 on the final model, and we kept **0.70**:
+  the 0.0002 difference is within noise, while 0.70 produces 1,147 false merges on singletons
+  against 1,326 at 0.65, and 13,561 distractors assigned against 16,147. At a flat optimum the
+  precision-leaning end is the safer choice under this metric.
 
 **Leaderboard history:**
 
@@ -211,7 +239,7 @@ transliteration, so a US distractor scoring moderately looks acceptable by India
 | 2 | stage-2 applied to all countries | 0.914 |
 | 3 | **stage-2 India only, stage-1 elsewhere** | **0.916** |
 | 4 | stage-1, `max_df 0.02` + floor 0.2469, retrained matcher | TBD |
-| 5 | as #4 plus stage-2 India only, re-tuned threshold | TBD |
+| 5 | as #4 plus collective stage on India (threshold 0.70) | TBD |
 
 Note that the holdout predicted +0.010 from the collective stage while the leaderboard moved
 +0.002 — the offline estimate overstated the gain by roughly 5x on the full test set, and by
@@ -219,7 +247,7 @@ about 2x once restricted to India. Later changes were therefore accepted only wi
 margin on both holdout halves **and** checked per country rather than in aggregate.
 
 **Final configuration:** `k = 5` per view, `max_df_ratio = 0.02`, blocking-score floor
-`0.2469`, stage-1 threshold **0.70**, stage-2 threshold **0.60** applied to India only.
+`0.2469`, stage-1 threshold **0.70**, collective-stage threshold **0.70** applied to India only.
 
 **Loss decomposition** on the India holdout (549,932 true links), each bucket priced by an
 oracle that fixes only that failure mode:
